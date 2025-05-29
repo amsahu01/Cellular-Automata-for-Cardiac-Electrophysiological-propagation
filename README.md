@@ -1,6 +1,6 @@
-# Cellular-Automata-for-Cardiac-Electrophysiological-propagation
+# Cellular Automaton for Cardiac Electrophysiological Propagation
 
-This Python script simulates a 2D cellular automaton model representing the propagation of an electrical wave, often used as a simplified model for cardiac tissue excitability. The model features cells with resting, excited, and multi-stage refractory states.
+This Python script simulates a 2D cellular automaton model representing the propagation of an electrical wave, often used as a simplified model for cardiac tissue excitability. The model features cells with resting, excited, and multi-stage refractory states, and has been optimized for performance and code structure.
 
 ## Features
 
@@ -8,27 +8,33 @@ This Python script simulates a 2D cellular automaton model representing the prop
 *   **Cell States:**
     *   **Resting (0):** Cell is excitable.
     *   **Excited (1):** Cell is active and can excite its neighbors.
-    *   **Refractory (2 to N):** Cell is in a recovery phase and cannot be re-excited. The duration is configurable.
-*   **Moore Neighborhood:** Each cell considers its 8 immediate neighbors (horizontal, vertical, and diagonal).
+    *   **Refractory (2 to N):** Cell is in a recovery phase and cannot be re-excited. The duration (`REFRACTORY_PERIOD`) is configurable.
+*   **Moore Neighborhood:** Each cell considers its 8 immediate neighbors (horizontal, vertical, and diagonal) for excitation counting.
 *   **Configurable Parameters:**
     *   Grid dimensions (`GRID_WIDTH`, `GRID_HEIGHT`)
     *   Number of simulation time steps (`TIME_STEPS`)
     *   Duration of the refractory period (`REFRACTORY_PERIOD`)
     *   Excitation threshold (`EXCITATION_THRESHOLD`): Minimum number of excited neighbors required to excite a resting cell.
-*   **Initial Stimulus:**
-    *   Can be a central square of excited cells.
-    *   Can be the entire bottom row of excited cells.
-*   **Vectorized Update Logic:** The core cell state update rules are implemented using NumPy vectorization for improved performance on large grids.
-*   **Visualization:** Uses Matplotlib to animate the wave propagation in real-time.
+*   **Versatile Initial Stimulus (via `initialize_grid` function):**
+    *   `"center"`: A square stimulus of configurable size at the grid's center.
+    *   `"bottom_row"`: Excites the entire bottom row of the grid.
+    *   `"bottom_left_corner"`: Excites a square stimulus of configurable size at the bottom-left corner of the grid.
+*   **Vectorized Update Logic (`update_grid_vectorized`):** The core cell state update rules are implemented using NumPy vectorization (boolean array indexing and array operations) for significantly improved performance on large grids compared to explicit Python loops.
+*   **Structured Code:**
+    *   Follows standard Python practices, including a `main()` function and `if __name__ == "__main__":` guard for better modularity and reusability.
+    *   Dedicated functions for grid initialization, state updates, and visualization setup.
+    *   Comprehensive docstrings for functions and the module, aiding understanding and potential automated documentation generation.
+*   **Real-time Visualization:** Uses Matplotlib to animate the wave propagation.
     *   White: Resting cells
     *   Red: Excited cells
     *   Blue: Refractory cells
+*   **Basic Error Handling:** Includes initial checks for parameter validity and stimulus setup.
 
 ## Requirements
 
 To run this script, you need:
 
-1.  **Python 3.x**
+1.  **Python 3.x** (developed and tested with Python 3.7+)
 2.  **NumPy:** For numerical operations and array manipulation.
     ```bash
     pip install numpy
@@ -37,7 +43,7 @@ To run this script, you need:
     ```bash
     pip install matplotlib
     ```
-4.  **SciPy:** For the `convolve2d` function used in neighbor counting.
+4.  **SciPy:** For the `convolve2d` function used in efficient neighbor counting.
     ```bash
     pip install scipy
     ```
