@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.colors import ListedColormap
 from scipy.signal import convolve2d
-import time # For potential performance checks, not used by default in this version
+
 
 # --- Parameters ---
 GRID_WIDTH = 1000
@@ -196,7 +196,7 @@ def main():
     # Initialize grid
     # To use bottom row stimulus: current_grid = initialize_grid(GRID_HEIGHT, GRID_WIDTH, stim_type="bottom_row")
     current_grid = initialize_grid(GRID_HEIGHT, GRID_WIDTH, stim_type="center", stim_size=15) 
-    grid_container = [current_grid] # Use a list to pass grid by reference to animate_step
+    grid_container = [current_grid] 
 
     # --- Visualization and Animation Setup ---
     fig, ax, img = create_animation_elements(grid_container[0], REFRACTORY_PERIOD)
