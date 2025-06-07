@@ -12,13 +12,9 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.colors import ListedColormap
 from scipy.signal import convolve2d
 
+# --- Import from our analysis module ---
+from ca_analysis import SimulationDataCollector
 
-# --- Parameters ---
-GRID_WIDTH = 1000
-GRID_HEIGHT = 1000
-TIME_STEPS = 100
-REFRACTORY_PERIOD = 10
-EXCITATION_THRESHOLD = 1
 
 # --- States ---
 RESTING = 0
@@ -26,16 +22,17 @@ EXCITED = 1
 # Refractory states will be integers from 2 up to REFRACTORY_PERIOD + 1
 
 # --- Moore Neighborhood Kernel ---
-kernel = np.array([[1, 1, 1],
-                   [1, 0, 1],
-                   [1, 1, 1]])
+# kernel = np.array([[1, 1, 1],
+#                    [2, 0, 2],
+#                    [1, 1, 1]])
 
-# Alternative larger kernel (commented out)
-# kernel = np.array([[1, 1, 1, 1, 1],
-# [1, 1, 1, 1, 1],
-# [1, 1, 0, 1, 1],
-# [1, 1, 1, 1, 1],
-# [1, 1, 1, 1, 1]])
+kernel = np.array([[1, 1, 0.8, 1, 1],
+                   [1, 1, 0.8, 1, 1],
+                   [1.5, 1.5, 0, 1.5, 1.5],
+                   [1, 1, 0.8, 1, 1],
+                   [1, 1, 0.8, 1, 1]], dtype=float)
+
+
 
 def initialize_grid(grid_height, grid_width, stim_type="center", stim_size=3):
     """
@@ -79,7 +76,7 @@ def initialize_grid(grid_height, grid_width, stim_type="center", stim_size=3):
 
     return grid
     
-def update_grid_vectorized(current_grid, refractory_period_val, excitation_threshold_val):
+def update_grid(current_grid, refractory_period_val, excitation_threshold_val):
     """
     Updates the cellular automaton grid for one time step using vectorized operations.
 
@@ -159,61 +156,154 @@ def create_animation_elements(initial_grid, refractory_period_val):
     plt.yticks([])
     return fig, ax, img
 
-def animate_step(frame_num, grid_ref, img_ref, ax_ref, refractory_p, excitation_t):
+def animate_step(frame_num, grid_ref, img_ref, ax_ref,
+                  excitation_t, refractory_p, data_collector_obj,
+                  fig_to_save_from, screenshot_time_steps=None): # Modified args
     """
-    Function called by FuncAnimation for each frame to update the animation.
+    Updates the simulation for a single time step and refreshes the animation display.
+
+    This function is called by `matplotlib.animation.FuncAnimation` for each frame
+    of the animation. It performs the following actions:
+    1. Retrieves the current state of the simulation grid.
+    2. Calls `update_grid` to compute the grid state for the next time step.
+    3. Updates the reference to the grid with the new state.
+    4. Updates the data displayed by the `matplotlib.image.AxesImage` object.
+    5. Updates the title of the plot to show the current time step and parameters.
+    6. If a `SimulationDataCollector` object is provided, it calls its `record_step`
+       method to store data about the current state.
+    7. If `screenshot_time_steps` are specified and the current frame number
+       (plus one, as frames are 0-indexed) is in this list, it saves a
+       screenshot of the current animation frame.
 
     Args:
-        frame_num (int): The current frame number (passed by FuncAnimation).
-        grid_ref (list): A list containing the grid (used as a mutable reference).
-        img_ref (matplotlib.image.AxesImage): The image object to update.
-        ax_ref (matplotlib.axes.Axes): The axes object for setting the title.
-        refractory_p (int): The refractory period value.
-        excitation_t (int): The excitation threshold value.
-
+        frame_num (int): The current frame number (time step), provided by
+                         `FuncAnimation`. This is 0-indexed.
+        grid_ref (list): A list containing a single element: the 2D NumPy array
+                         representing the current state of the simulation grid.
+                         This is passed as a list to allow modification within
+                         the function (pass-by-reference behavior for the grid).
+        img_ref (matplotlib.image.AxesImage): The `AxesImage` object (from `imshow`)
+                                              that displays the grid. This function
+                                              will update its data.
+        ax_ref (matplotlib.axes.Axes): The Matplotlib `Axes` object on which the
+                                       image is displayed. Used to update the title.
+        excitation_t (int): The excitation threshold for cells.
+        refractory_p (int): The refractory period duration for cells.
+        data_collector_obj (SimulationDataCollector or None): An instance of the
+            `SimulationDataCollector` class used to record data at each step.
+            If `None`, data collection is skipped.
+        fig_to_save_from (matplotlib.figure.Figure): The Matplotlib `Figure` object
+            from which screenshots will be saved.
+        screenshot_time_steps (list of int, optional): A list of 1-indexed time
+            steps at which to save a screenshot of the animation.
+            Defaults to `None`.
 
     Returns:
-        list: A list containing the updated image artist (required by FuncAnimation).
+        list: A list containing the updated `AxesImage` object (`[img_ref]`).
+              This is required by `FuncAnimation` for blitting.
     """
-    #print(f"Time step: {frame_num}") 
-    grid_ref[0] = update_grid_vectorized(grid_ref[0], refractory_p, excitation_t)
-    img_ref.set_array(grid_ref[0])
-    ax_ref.set_title("Cardiac Propagation Automata")
+    current_grid = grid_ref[0]
+    new_grid_state = update_grid(current_grid, refractory_p, excitation_t)
+    grid_ref[0] = new_grid_state
+
+    img_ref.set_array(new_grid_state)
+    ax_ref.set_title(f"Cardiac Propagation - Time: {frame_num + 1} (ET:{excitation_t} RP:{refractory_p})")
+
+    # --- Trigger Data Collection via the collector object ---
+    if data_collector_obj:
+        # Check if a collector is provided
+        data_collector_obj.record_step(frame_num, new_grid_state)
+
+    # --- Save Screenshot at specific time steps ---
+    if screenshot_time_steps and (frame_num + 1) in screenshot_time_steps:
+        screenshot_filename = f"simulation_step_{frame_num + 1}.png"
+        fig_to_save_from.savefig(screenshot_filename)
+        print(f"Saved screenshot: {screenshot_filename}")
+
     return [img_ref]
+
 
 def main():
     """
-    Main function to set up and run the cellular automaton simulation and animation.
+    Main function to set up and run the cellular automaton simulation.
+
+    This function orchestrates the entire simulation process:
+    1.  Defines simulation parameters: grid dimensions, number of time steps,
+        refractory period, excitation threshold, stimulus type, and stimulus size.
+    2.  Defines time steps at which to save screenshots of the simulation.
+    3.  Collects simulation parameters into a dictionary for later use (e.g., plotting).
+    4.  Performs basic assertions to ensure parameter validity.
+    5.  Initializes the simulation grid using `initialize_grid`.
+    6.  Initializes a `SimulationDataCollector` to store data at each step.
+    7.  Sets up the Matplotlib animation elements (figure, axes, image) using
+        `create_animation_elements`.
+    8.  Creates a `FuncAnimation` object to run the simulation, updating the grid
+        and display at each time step via the `animate_step` function.
+    9.  Displays the animation.
+    10. After the animation completes, it calls the data collector's `plot_results`
+        method to generate and display quantitative analysis plots.
+
+    The simulation models the propagation of an electrical wave in cardiac tissue,
+    visualizing cell states (resting, excited, refractory) over time.
     """
+    grid_width = 300
+    grid_height = 300
+    time_steps = 150
+    refractory_period = 4
+    excitation_threshold = 3
+    stimulus_type = "center"  # Options: "bottom_row", "center", "bottom_left_corner"
+    stimulus_size = 5
+   
+
+
+     # --- Define at which time steps you want screenshots (1-indexed) ---
+    SCREENSHOT_AT_STEPS = [1, 40, 80] # Example: save at these time steps
+
+    simulation_params = {
+        "ET": excitation_threshold, "RP": refractory_period,
+        "stim_type": stimulus_type, "stim_size": stimulus_size,
+        "grid_W": grid_width, "grid_H": grid_height
+    }
     # --- Parameter Assertions (Basic Error Handling) ---
     try:
-        assert REFRACTORY_PERIOD >= 0, "REFRACTORY_PERIOD cannot be negative."
-        assert EXCITATION_THRESHOLD > 0, "EXCITATION_THRESHOLD must be positive."
-        
+        assert grid_width > 0 and grid_height > 0
+        assert refractory_period >= 0 and excitation_threshold > 0 and time_steps > 0
     except AssertionError as e:
-        print(f"Parameter Error: {e}")
-        return 
-    # Initialize grid
-    # To use bottom row stimulus: current_grid = initialize_grid(GRID_HEIGHT, GRID_WIDTH, stim_type="bottom_row")
-    current_grid = initialize_grid(GRID_HEIGHT, GRID_WIDTH, stim_type="center", stim_size=15) 
-    grid_container = [current_grid] 
+        print(f"Parameter Error: One or more basic assertions failed for parameters. {e}")
+        return
 
-    # --- Visualization and Animation Setup ---
-    fig, ax, img = create_animation_elements(grid_container[0], REFRACTORY_PERIOD)
+    print(f"Starting simulation with: Size={grid_width}x{grid_height}, Time Steps={time_steps}") # ... and other params
 
-    print(f"Starting animation with Excitation Threshold: {EXCITATION_THRESHOLD}, Refractory Period: {REFRACTORY_PERIOD}...")
-    print(f"Grid size: {GRID_WIDTH}x{GRID_HEIGHT}. Total time steps: {TIME_STEPS}.")
-    
-    # Define the animation function
-    animation_function = lambda frame: animate_step(frame, grid_container, img, ax, REFRACTORY_PERIOD, EXCITATION_THRESHOLD)
+    try:
+        current_grid = initialize_grid(grid_height, grid_width,
+                                       stim_type=stimulus_type, stim_size=stimulus_size)
+    except ValueError as e:
+        print(f"Initialization Error: {e}")
+        return
 
-    ani = FuncAnimation(fig, animation_function,
-                        frames=TIME_STEPS, interval=10, blit=True)
+    if SCREENSHOT_AT_STEPS:
+        print(f"Screenshots will be saved at time steps: {SCREENSHOT_AT_STEPS}")
 
-    plt.tight_layout()
+    grid_list_container = [current_grid]
+    # --- Initialize Data Collector ---
+    data_collector = SimulationDataCollector(grid_height, grid_width)
+
+    fig_anim, ax_anim, img_anim = create_animation_elements(grid_list_container[0], refractory_period)
+
+    anim_func = lambda fn: animate_step(fn, grid_list_container, img_anim, ax_anim,
+                                         excitation_threshold, refractory_period,
+                                         data_collector, fig_anim, SCREENSHOT_AT_STEPS) # Pass collector object
+
+    ani = FuncAnimation(fig_anim, anim_func, frames=time_steps, interval=10, blit=True, repeat=False)
+    fig_anim.tight_layout()
     plt.show()
 
-    print("Simulation finished.")
+    print("Animation finished. Plotting quantitative results...")
+
+    # --- Plot Quantitative Results using the collector ---
+    data_collector.plot_results(params=simulation_params)
+
+    print("Simulation completely finished.")
 
 if __name__ == "__main__":
     main()
