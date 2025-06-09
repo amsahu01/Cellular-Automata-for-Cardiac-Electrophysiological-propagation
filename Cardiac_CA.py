@@ -211,7 +211,6 @@ def animate_step(frame_num, grid_ref, img_ref, ax_ref,
 
     # --- Trigger Data Collection via the collector object ---
     if data_collector_obj:
-        # Check if a collector is provided
         data_collector_obj.record_step(frame_num, new_grid_state)
 
     # --- Save Screenshot at specific time steps ---
@@ -272,7 +271,7 @@ def main():
         print(f"Parameter Error: One or more basic assertions failed for parameters. {e}")
         return
 
-    print(f"Starting simulation with: Size={grid_width}x{grid_height}, Time Steps={time_steps}") # ... and other params
+    print(f"Starting simulation with: Size={grid_width}x{grid_height}, Time Steps={time_steps}") 
 
     try:
         current_grid = initialize_grid(grid_height, grid_width,
@@ -292,7 +291,7 @@ def main():
 
     anim_func = lambda fn: animate_step(fn, grid_list_container, img_anim, ax_anim,
                                          excitation_threshold, refractory_period,
-                                         data_collector, fig_anim, SCREENSHOT_AT_STEPS) # Pass collector object
+                                         data_collector, fig_anim, SCREENSHOT_AT_STEPS) 
 
     ani = FuncAnimation(fig_anim, anim_func, frames=time_steps, interval=10, blit=True, repeat=False)
     fig_anim.tight_layout()
