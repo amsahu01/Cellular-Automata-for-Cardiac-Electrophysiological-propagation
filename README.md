@@ -19,7 +19,7 @@ This Python script simulates a 2D cellular automaton model representing the prop
     *   `"center"`: A square stimulus of configurable size at the grid's center.
     *   `"bottom_row"`: Excites the entire bottom row of the grid.
     *   `"bottom_left_corner"`: Excites a square stimulus of configurable size at the bottom-left corner of the grid.
-*   **Vectorized Update Logic (`update_grid_vectorized`):** The core cell state update rules are implemented using NumPy vectorization (boolean array indexing and array operations) for significantly improved performance on large grids compared to explicit Python loops.
+*   **Vectorized Update Logic (`update_grid`):** The core cell state update rules are implemented using NumPy vectorization (boolean array indexing and array operations) for significantly improved performance on large grids compared to explicit Python loops.
 *   **Structured Code:**
     *   Follows standard Python practices, including a `main()` function and `if __name__ == "__main__":` guard for better modularity and reusability.
     *   Dedicated functions for grid initialization, state updates, and visualization setup.
