@@ -43,10 +43,11 @@ def initialize_grid(grid_height, grid_width, stim_type="center", stim_size=3):
         grid_width (int): The width of the grid.
         stim_type (str, optional): Type of stimulus. "center" for a central square,
                                    "bottom_row" for the entire bottom row,
-                                   "bottom_left_corner" for a square at the bottom-left.
+                                   "bottom_left_corner" for a square at the bottom-left,
+                                   "bottom_center" for a square at the center of the bottom edge.
                                    Defaults to "center".
-        stim_size (int, optional): Size of the square stimulus if type is "center"
-                                   or "bottom_left_corner". Defaults to 3.
+        stim_size (int, optional): Size of the square stimulus if type is "center",
+                                   "bottom_left_corner", or "bottom_center". Defaults to 3.
 
     Returns:
         np.ndarray: The initialized grid.
@@ -71,11 +72,18 @@ def initialize_grid(grid_height, grid_width, stim_type="center", stim_size=3):
         if not (stim_size > 0 and stim_size <= grid_height and stim_size <= grid_width):
             raise ValueError("Stimulus size for 'bottom_left_corner' is invalid or too large for the grid.")
         grid[grid_height - stim_size : grid_height, 0 : stim_size] = EXCITED
+    elif stim_type == "bottom_center":
+        if not (stim_size > 0 and stim_size <= grid_height and stim_size <= grid_width):
+            raise ValueError("Stimulus size for 'bottom_center' is invalid or too large for the grid.")
+        bottom_y = grid_height - stim_size
+        center_x = grid_width // 2
+        grid[bottom_y : grid_height, 
+             center_x - stim_size//2 : center_x + stim_size//2 + (stim_size % 2)] = EXCITED
     else:
         print(f"Warning: Unknown stimulus type '{stim_type}'. Grid initialized without active stimulus cells.")
 
     return grid
-    
+  
 def update_grid(current_grid, refractory_period_val, excitation_threshold_val):
     """
     Updates the cellular automaton grid for one time step using vectorized operations.
