@@ -9,6 +9,11 @@ It combines:
 
 The result is a smooth, realistic simulation of cardiac wavefronts, with tools to measure **Local Activation Time (LAT)** and **Conduction Velocity (CV)**.
 
+
+### How it works 
+- Cells progress through integer excitation/refractory states while a floating‑point voltage accumulator V integrates anisotropic neighbor input.
+- V decays by a leak factor (ALPHA) and, when V ≥ THETA and the cell is not refractory, the cell enters the first excited substate.
+
 ---
 
 ## 📸 Example Output
@@ -41,7 +46,7 @@ The result is a smooth, realistic simulation of cardiac wavefronts, with tools t
 Install dependencies:
 
 ```bash
-pip install numpy matplotlib scipy
+pip install "numpy>=1.24" "matplotlib>=3.7" "scipy>=1.10"
 ```
 ---
 

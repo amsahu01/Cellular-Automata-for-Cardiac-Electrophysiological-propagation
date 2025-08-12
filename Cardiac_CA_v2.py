@@ -22,7 +22,7 @@ from typing import List, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.colors import ListedColormap
+from matplotlib.colors import ListedColormap, Normalize
 from scipy.signal import convolve2d
 
 # ----------------------------- States ---------------------------------------
@@ -399,18 +399,19 @@ def initialize_grid(
     if not (grid_height > 0 and grid_width > 0):
         raise ValueError("Grid height and width must be positive integers.")
     grid = np.full((grid_height, grid_width), RESTING, dtype=np.int32)
+   
     if stim_type == "center":
         cy, cx = grid_height // 2, grid_width // 2
-        y0 = cy - stim_size // 2
-        y1 = cy + stim_size // 2 + (stim_size % 2)
-        x0 = cx - stim_size // 2
-        x1 = cx + stim_size // 2 + (stim_size % 2)
+        y0 = max(0, cy - stim_size // 2)
+        y1 = min(grid_height, cy + stim_size // 2 + (stim_size % 2))
+        x0 = max(0, cx - stim_size // 2)
+        x1 = min(grid_width, cx + stim_size // 2 + (stim_size % 2))
         grid[y0:y1, x0:x1] = EXCITED
     elif stim_type == "bottom_center":
         cx = grid_width // 2
         y0 = max(0, grid_height - stim_depth)
-        x0 = cx - stim_size // 2
-        x1 = cx + stim_size // 2 + (stim_size % 2)
+        x0 = max(0, cx - stim_size // 2)
+        x1 = min(grid_width, cx + stim_size // 2 + (stim_size % 2))
         grid[y0:grid_height, x0:x1] = EXCITED
     elif stim_type == "bottom_cap":
         radius = max(6, stim_size // 2)
@@ -494,14 +495,13 @@ def update_grid_hybrid(
     mask_last_exc = current_grid == k_exc
     refractory_start = k_exc + 1
     new_grid[mask_last_exc] = refractory_start
-
-    refractory_end = refractory_start + refractory_period_val
+    refractory_last = refractory_start + refractory_period_val - 1
     refractory = current_grid >= refractory_start
 
-    progressing = refractory & (current_grid < refractory_end)
+    progressing = refractory & (current_grid < refractory_last)
     new_grid[progressing] = current_grid[progressing] + 1
 
-    finished = refractory & (current_grid == refractory_end)
+    finished = refractory & (current_grid == refractory_last)
     new_grid[finished] = RESTING
     V_next[finished] = 0.0
 
@@ -535,7 +535,7 @@ def create_animation_elements(
     colors = ["white"] + ["red"] * k_exc + ["blue"] * refractory_period_val
     cmap = ListedColormap(colors)
     max_state_value = k_exc + refractory_period_val
-    norm = plt.Normalize(vmin=RESTING, vmax=max_state_value)
+    norm = Normalize(vmin=RESTING, vmax=max_state_value)
     fig, ax = plt.subplots(figsize=(8, 8))
     img = ax.imshow(
         initial_grid,
