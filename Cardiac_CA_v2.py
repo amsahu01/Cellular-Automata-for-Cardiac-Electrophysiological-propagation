@@ -47,10 +47,10 @@ GRID_SIZE = 401
 
 #: Anisotropy ratio (sigma_long / sigma_trans) \(\CV ratio\).
 ANISO_RATIO = 1.5
-#: Transverse sigma in pixels.
-SIGMA_TRANS_PX = 4.0
-#: Longitudinal sigma in pixels.
-SIGMA_LONG_PX = ANISO_RATIO * SIGMA_TRANS_PX
+#: Transverse sigma in cells.
+SIGMA_TRANS = 4.0
+#: Longitudinal sigma in cells.
+SIGMA_LONG = ANISO_RATIO * SIGMA_TRANS
 #: Fiber angle in degrees (0 == +x direction).
 FIBER_ANGLE_DEG = 90.0
 #: Odd kernel size; larger gives smoother fronts but higher cost.
@@ -357,8 +357,8 @@ def anisotropic_gaussian_kernel(
 
 kernel = anisotropic_gaussian_kernel(
     size=KERNEL_SIZE,
-    sigma_long=SIGMA_LONG_PX,
-    sigma_trans=SIGMA_TRANS_PX,
+    sigma_long=SIGMA_LONG,
+    sigma_trans=SIGMA_TRANS,
     angle_deg=FIBER_ANGLE_DEG,
     gain=KERNEL_GAIN,
 )
@@ -615,7 +615,7 @@ def main() -> None:
         V_container[0] = new_V
 
         img_anim.set_array(new_grid)
-        rho = SIGMA_LONG_PX / SIGMA_TRANS_PX
+        rho = SIGMA_LONG / SIGMA_TRANS
         ax_anim.set_title(
             "t={:d}  theta={:.3f} alpha={:.3f}  ".format(frame_idx + 1, THETA, ALPHA)
             + "rho={:.2f} phi={}°  ".format(rho, int(FIBER_ANGLE_DEG))

@@ -56,7 +56,7 @@ You can tweak simulation parameters at the top of the script:
 
 | Parameter              | Description |
 |------------------------|-------------|
-| `GRID_SIZE`            | Grid width/height in pixels |
+| `GRID_SIZE`            | Grid width/height in cells |
 | `DX_MM` / `DT_MS`      | Spatial & temporal resolution |
 | `REFRACTORY_STEPS`     | Refractory period length |
 | `ANISO_RATIO`          | Anisotropy ratio (longitudinal / transverse) |
