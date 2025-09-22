@@ -151,7 +151,6 @@ What it does:
   $$
 
 
-> **Note**: In this CA, `APD_effective = (k_exc + refractory_steps) * DT_MS`, so APD fitting is nearly linear in refractory length and converges trivially. 
 
 ---
 
