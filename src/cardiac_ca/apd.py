@@ -1,4 +1,3 @@
-# /Users/amansahu/Downloads/Cellular-Automata/NEW_CA/src/cardiac_ca/apd.py
 from __future__ import annotations
 import numpy as np
 
