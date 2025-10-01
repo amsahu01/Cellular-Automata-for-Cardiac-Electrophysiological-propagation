@@ -17,6 +17,16 @@ from .config import SimulationConfig
 class SimulationApp:
     """High-level orchestrator for running the CA, animation, and summaries."""
 
+    
+    cfg: SimulationConfig
+    kernel: np.ndarray
+    grid: np.ndarray
+    V: np.ndarray
+    lat_tracker: LATTracker
+    apd_tracker: APDTracker
+    data: SimulationDataCollector
+    ca: CardiacCA
+
     def __init__(self, config: SimulationConfig) -> None:
         self.cfg = config
         self.kernel = self.cfg.build_kernel()

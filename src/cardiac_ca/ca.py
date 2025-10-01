@@ -55,6 +55,17 @@ def update_grid_hybrid(
 class CardiacCA:
     """Encapsulates the cellular automaton state and update logic."""
 
+    grid: np.ndarray
+    V: np.ndarray
+    kernel: np.ndarray
+    refractory_period: int
+    theta: float
+    alpha: float
+    k_exc: int
+    lat_tracker: Optional[LATTracker]
+    data_collector: Optional[SimulationDataCollector]
+    apd_tracker: Optional[APDTracker]
+
     def __init__(
         self,
         grid: np.ndarray,
@@ -80,7 +91,7 @@ class CardiacCA:
         self.apd_tracker = apd_tracker
 
     def step(self, frame_idx: int) -> Tuple[np.ndarray, np.ndarray]:
-        """Advance one simulation step and update trackers/collectors."""
+        """Simulation step and update trackers/collectors."""
         new_grid, new_V = self._update_grid_hybrid(
             self.grid,
             self.V,

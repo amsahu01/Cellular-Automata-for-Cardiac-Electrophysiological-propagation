@@ -12,7 +12,7 @@ from .kernel import anisotropic_gaussian_kernel
 @dataclass
 class SimulationConfig:
     grid_size: int = GRID_SIZE
-    time_steps: int = 300
+    time_steps: int = 400
     refractory_steps: int = REFRACTORY_STEPS
 
     # Stimulus

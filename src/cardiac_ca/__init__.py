@@ -6,7 +6,7 @@ from .constants import (
     IMSHOW_INTERPOLATION,
 )
 
-from .kernel import anisotropic_gaussian_kernel, KernelFactory
+from .kernel import anisotropic_gaussian_kernel
 from .lat import LATTracker
 from .data import SimulationDataCollector
 from .grid import initialize_grid
@@ -24,7 +24,7 @@ __all__ = [
     "KERNEL_SIZE", "KERNEL_GAIN", "THETA", "ALPHA", "EXCITED_STAGES",
     "IMSHOW_INTERPOLATION",
     # modules
-    "anisotropic_gaussian_kernel", "KernelFactory",
+    "anisotropic_gaussian_kernel",
     "LATTracker",
     "SimulationDataCollector", "initialize_grid",
     "CardiacCA", "update_grid_hybrid", "create_animation_elements",

@@ -1,7 +1,6 @@
 from __future__ import annotations
 import numpy as np
 
-
 def anisotropic_gaussian_kernel(
     size: int = 21,
     sigma_long: float = 3.5,
@@ -32,35 +31,17 @@ def anisotropic_gaussian_kernel(
     np.ndarray
         2‑D float32 kernel of shape ``(size, size)``.
     """
-    return KernelFactory.create(size, sigma_long, sigma_trans, angle_deg, gain)
-
-
-class KernelFactory:
-    """Factory for creating anisotropic Gaussian kernels."""
-
-    @staticmethod
-    def create(
-        size: int = 21,
-        sigma_long: float = 3.5,
-        sigma_trans: float = 1.8,
-        angle_deg: float = 0.0,
-        gain: float = 1.0,
-    ) -> np.ndarray:
-        assert size % 2 == 1, "Kernel size must be odd."
-        r = size // 2
-        y, x = np.mgrid[-r : r + 1, -r : r + 1]
-        phi = np.deg2rad(angle_deg)
-        c, s = np.cos(phi), np.sin(phi)
-        xp = c * x + s * y
-        yp = -s * x + c * y
-        g = np.exp(
-            -((xp ** 2) / (2.0 * sigma_long ** 2)
-              + (yp ** 2) / (2.0 * sigma_trans ** 2))
-        ).astype(np.float32)
-        # No self-coupling
-        g[r, r] = 0.0
-        ssum = g.sum()
-        if ssum > 0:
-            g /= ssum
-        g *= gain
-        return g
+    assert size % 2 == 1, "Kernel size must be odd."
+    r = size // 2
+    y, x = np.mgrid[-r:r+1, -r:r+1]
+    phi = np.deg2rad(angle_deg)
+    c, s = np.cos(phi), np.sin(phi)
+    xp = c * x + s * y
+    yp = -s * x + c * y
+    g = np.exp(-((xp**2)/(2.0*sigma_long**2) + (yp**2)/(2.0*sigma_trans**2))).astype(np.float32)
+    g[r, r] = 0.0                 # no self-coupling
+    ssum = g.sum()
+    if ssum > 0:
+        g /= ssum
+    g *= gain
+    return g

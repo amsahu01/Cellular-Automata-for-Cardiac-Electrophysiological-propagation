@@ -36,7 +36,7 @@ def create_animation_elements(
         norm=norm,
         interpolation=IMSHOW_INTERPOLATION,
     )
-    ax.set_title("Cardiac Propagation Automata (Hybrid Anisotropic)")
+    ax.set_title("Cardiac Propagation Simulation", fontsize=16)
     plt.xticks([])
     plt.yticks([])
     return fig, ax, img
