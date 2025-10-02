@@ -134,6 +134,7 @@ stimulus_type = "bottom_cap"
 ## Fast Nelder–Mead demo (fit APD)
 
 The provided `src/optimize_apd_nm.py` is a **1-D** fast prototype that fits **refractory time (ms)** so the CA’s **mean APD** matches a target.
+
 Run:
 
 ```bash
