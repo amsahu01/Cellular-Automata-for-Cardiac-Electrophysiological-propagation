@@ -73,7 +73,7 @@ pip install -U numpy scipy matplotlib
 
   * Neighbors are cells in **excited** states; their mask is convolved with an **anisotropic Gaussian kernel** (fiber angle & anisotropy).
   * Resting cells update `V_next = α·V + (1−α)·I`; if `V_next ≥ θ`, they fire (`state=1`) and reset `V` locally.
-* **APD\_effective** (your definition) is:
+* **APD\_effective** is:
 
   ```
   APD_effective = (EXCITED_STAGES + REFRACTORY_STEPS) * DT_MS
