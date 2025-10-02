@@ -98,7 +98,7 @@ Artifacts:
 
 **Where to change parameters**: `src/cardiac_ca/constants.py` and `src/cardiac_ca/config.py`.
 
-Key defaults (you can edit):
+Key defaults :
 
 ```python
 # constants.py
@@ -155,4 +155,3 @@ What it does:
 ---
 
 
-This project draws on concepts from cardiac electrophysiology (APD, LAT, CV) and classic derivative-free optimization (Nelder–Mead).
