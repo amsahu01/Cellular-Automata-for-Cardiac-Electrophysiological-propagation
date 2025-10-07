@@ -37,7 +37,7 @@ class Config:
     angle_deg: float = 0.0
     gain: float = 3.0
 
-    # Boundary handling ("reflective" for mirror / no-flux, "zero" for Dirichlet)
+    # Boundary handling 
     boundary_mode: str = "reflective"
 
     # Activation threshold (uniform)
