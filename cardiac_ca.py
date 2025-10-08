@@ -14,7 +14,7 @@ from scipy.signal import convolve2d, fftconvolve
 
 
 # -------------------------------------------------------------
-# Configuration (edit these values as needed)
+# Configuration
 # -------------------------------------------------------------
 
 
