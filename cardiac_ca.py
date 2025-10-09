@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
 
-import matplotlib.animation as animation
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
 import numpy as np
-from scipy.signal import convolve2d, fftconvolve
+from scipy.signal import fftconvolve
+
+from viz_metrics import animate_simulation, compute_metrics, show_activation_maps
 
 
 # -------------------------------------------------------------
-# Configuration
+# Configurations
 # -------------------------------------------------------------
 
 
@@ -24,11 +23,11 @@ class Config:
     height: int = 401
     width: int = 401
     dt_ms: float = 0.1
-    t_max_ms: float = 2000.0  # safety cap
+    max_steps: int = 2000  # safety cap
 
-    # State durations (APD = T_excited + T_refractory)
-    T_excited_ms: float = 1.0
-    T_refractory_ms: float = 100.0
+    # Phase durations (number of simulation steps)
+    excited_steps: int = 3
+    refractory_steps: int = 1000
 
     # Kernel parameters
     kernel_size: int = 15
@@ -36,9 +35,6 @@ class Config:
     aniso_ratio: float = 1  # sigma_long / sigma_trans
     angle_deg: float = 0.0
     gain: float = 3.0
-
-    # Boundary handling 
-    boundary_mode: str = "reflective"
 
     # Activation threshold (uniform)
     threshold: float = 0.25
@@ -48,11 +44,11 @@ class Config:
     stimulus_size: int = 12
 
     # Visualization
-    animate: bool = True
+    animate: bool = False
     steps_per_frame: int = 1
     fps: int = 30
     cmap_name: str = "state"
-    show_apd_at_end: bool = True
+    show_apd_at_end: bool = False
 
 
 # -------------------------------------------------------------
@@ -98,20 +94,21 @@ def anisotropic_gaussian_kernel(
 @dataclass
 class SimState:
     state: np.ndarray
-    t_activation: np.ndarray
-    t_deactivation: np.ndarray
+    activation_step: np.ndarray
+    deactivation_step: np.ndarray
     threshold: np.ndarray
     activated_mask: np.ndarray
     time_ms: float = 0.0
     step: int = 0
+    activation_counts: list[int] = field(default_factory=list)
 
 
 def initialise_state(cfg: Config) -> tuple[SimState, np.ndarray]:
     grid_shape = (cfg.height, cfg.width)
     state = np.zeros(grid_shape, dtype=np.uint8)
-    t_activation = np.full(grid_shape, np.nan, dtype=np.float64)
-    t_deactivation = np.full(grid_shape, np.nan, dtype=np.float64)
-    threshold = np.full(grid_shape, cfg.threshold, dtype=np.float64)
+    activation_step = np.full(grid_shape, -1, dtype=np.int32)
+    deactivation_step = np.full(grid_shape, -1, dtype=np.int32)
+    threshold = np.full(grid_shape, cfg.threshold, dtype=np.float32)
     activated_mask = np.zeros(grid_shape, dtype=bool)
 
     stim_type = cfg.stimulus_type.lower()
@@ -128,9 +125,9 @@ def initialise_state(cfg: Config) -> tuple[SimState, np.ndarray]:
         raise ValueError(f"Unsupported stimulus type '{cfg.stimulus_type}'")
 
     state[stim_mask] = EXCITED
-    t_activation[stim_mask] = 0.0
-    apd = cfg.T_excited_ms + cfg.T_refractory_ms
-    t_deactivation[stim_mask] = apd
+    activation_step[stim_mask] = 0
+    apd_steps = cfg.excited_steps + cfg.refractory_steps
+    deactivation_step[stim_mask] = apd_steps
     activated_mask |= stim_mask
 
     sigma_long = cfg.aniso_ratio * cfg.sigma_trans  # derive longitudinal width from ratio
@@ -141,218 +138,87 @@ def initialise_state(cfg: Config) -> tuple[SimState, np.ndarray]:
         angle_deg=cfg.angle_deg,
         gain=cfg.gain,
     )
-    return SimState(state, t_activation, t_deactivation, threshold, activated_mask), kernel
+    return SimState(state, activation_step, deactivation_step, threshold, activated_mask), kernel
+    
 
 
-def update_rules(cfg: Config, sim: SimState, kernel: np.ndarray) -> None:
+def simulate_step(cfg: Config, sim: SimState, kernel: np.ndarray) -> None:
     excited_mask = (sim.state == EXCITED).astype(np.float64)
-    boundary = cfg.boundary_mode.lower()
-    if boundary in {"reflective", "mirror", "symm"}:
-        input_field = convolve2d(
-            excited_mask,
-            kernel,
-            mode="same",
-            boundary="symm",
-        )
-    else:
-        # Default to zero-padding (Dirichlet) via FFT-based convolution.
-        input_field = fftconvolve(excited_mask, kernel, mode="same")
-
+    input_field = fftconvolve(excited_mask, kernel, mode="same")
 
     activate_mask = (sim.state == RESTING) & (input_field >= sim.threshold)
+    num_newly_excited = int(np.count_nonzero(activate_mask))
 
-    time_next = sim.time_ms + cfg.dt_ms
+    step_next = sim.step + 1
+
+    excited_steps = cfg.excited_steps
+    refrac_steps = cfg.refractory_steps
+    apd_steps = excited_steps + refrac_steps
 
     excite_to_refrac = (sim.state == EXCITED) & (
-        time_next >= sim.t_activation + cfg.T_excited_ms - 1e-9
-    )
+        sim.activation_step >= 0
+    ) & (step_next >= sim.activation_step + excited_steps)
+
     refrac_to_rest = (sim.state == REFRACTORY) & (
-        time_next >= sim.t_deactivation - 1e-9
-    )
+        sim.deactivation_step >= 0
+    ) & (step_next >= sim.deactivation_step)
 
     sim.state[excite_to_refrac] = REFRACTORY
     sim.state[refrac_to_rest] = RESTING
 
     sim.state[activate_mask] = EXCITED
-    sim.t_activation[activate_mask] = time_next
-    sim.t_deactivation[activate_mask] = (
-        time_next + cfg.T_excited_ms + cfg.T_refractory_ms
-    )
+    sim.activation_step[activate_mask] = step_next
+    sim.deactivation_step[activate_mask] = step_next + apd_steps
+    sim.activation_counts.append(num_newly_excited)
+
     sim.activated_mask |= activate_mask
 
-    sim.time_ms = time_next
-    sim.step += 1
+    sim.step = step_next
+    sim.time_ms = sim.step * cfg.dt_ms
 
-
-# -------------------------------------------------------------
-# Visualization
-# -------------------------------------------------------------
-
-
-def state_colormap(name: str) -> tuple[mcolors.Colormap, mcolors.Normalize]:
-    if name.lower() == "state":
-        colors = [
-            (1.0, 1.0, 1.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 0.0, 1.0),
-        ]
-        cmap = mcolors.ListedColormap(colors, name="state_map")
-        norm = mcolors.BoundaryNorm([-0.5, 0.5, 1.5, 2.5], cmap.N)
-    else:
-        cmap = plt.get_cmap(name)
-        norm = mcolors.Normalize(vmin=RESTING, vmax=REFRACTORY)
-    return cmap, norm
 
 
 def run_simulation(cfg: Config) -> SimState:
     sim, kernel = initialise_state(cfg)
     if cfg.animate:
-        animate_simulation(cfg, sim, kernel)
+        animate_simulation(cfg, sim, kernel, simulate_step, is_complete)
     else:
         while not is_complete(cfg, sim):
-            update_rules(cfg, sim, kernel)
+            simulate_step(cfg, sim, kernel)
     return sim
 
 
-def animate_simulation(cfg: Config, sim: SimState, kernel: np.ndarray) -> None:
-    cmap, norm = state_colormap(cfg.cmap_name)
-    fig, ax = plt.subplots(figsize=(7, 7))
-    ax.set_title("Cardiac CA Simulation")
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-
-    image = ax.imshow(sim.state, cmap=cmap, norm=norm, origin="upper", interpolation="bilinear")
-    hud = ax.text(
-        0.02,
-        0.98,
-        "",
-        transform=ax.transAxes,
-        ha="left",
-        va="top",
-        fontsize=10,
-        color="white",
-        bbox=dict(facecolor="black", alpha=0.4, edgecolor="none"),
-    )
-    hud.set_text(format_status(sim, wall_time_s=0.0))
-
-    fps = max(1, cfg.fps)
-    steps_per_frame = max(1, cfg.steps_per_frame)
-    start_wall = time.perf_counter()
-
-    def update(_frame):
-        for _ in range(steps_per_frame):
-            if is_complete(cfg, sim):
-                break
-            update_rules(cfg, sim, kernel)
-        image.set_data(sim.state)
-        wall_elapsed = time.perf_counter() - start_wall
-        hud.set_text(format_status(sim, wall_elapsed))
-        if is_complete(cfg, sim):
-            anim.event_source.stop()
-        return image, hud
-
-    anim = animation.FuncAnimation(
-        fig,
-        update,
-        interval=1000 / fps,
-        blit=False,
-        cache_frame_data=False,
-    )
-
-    plt.show()
-
-    if cfg.show_apd_at_end:
-        show_activation_maps(sim)
-
-
-def format_status(sim: SimState, wall_time_s: float) -> str:
-    num_excited = int(np.count_nonzero(sim.state == EXCITED))
-    num_refrac = int(np.count_nonzero(sim.state == REFRACTORY))
-    return (
-        f"t = {sim.time_ms:7.1f} ms\n"
-        f"wall_t = {wall_time_s:6.2f} s\n"
-        f"excited = {num_excited:6d}\n"
-        f"refractory = {num_refrac:6d}"
-    )
-
-
-def show_activation_maps(sim: SimState) -> None:
-    activation = sim.t_activation
-    deactivation = sim.t_deactivation
-    apd = deactivation - activation
-
-    datasets = [
-        (activation, "Activation Time (ms)"),
-        (deactivation, "Deactivation Time (ms)"),
-        (apd, "APD (ms)"),
-    ]
-
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-    for ax, (data, title) in zip(axes, datasets):
-        im = ax.imshow(data, origin="upper", cmap="viridis")
-        ax.set_title(title)
-        ax.set_xlabel("x")
-        ax.set_ylabel("y")
-        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-
-    fig.tight_layout()
-    plt.show()
-
-
 # -------------------------------------------------------------
-# Termination, metrics, and entry point
+# Main 
 # -------------------------------------------------------------
 
 
 def is_complete(cfg: Config, sim: SimState) -> bool:
     if sim.step == 0:
         return False
-    if cfg.t_max_ms is not None and sim.time_ms >= cfg.t_max_ms:
+    if cfg.max_steps is not None and sim.step >= cfg.max_steps:
         return True
     return np.all(sim.state == RESTING)
 
 
-def compute_metrics(sim: SimState) -> dict[str, float]:
-    apd = sim.t_deactivation - sim.t_activation
-    valid = apd[~np.isnan(apd)]
-    coverage = float(np.count_nonzero(~np.isnan(apd)) / apd.size)
-    metrics = {
-        "t_end_ms": float(sim.time_ms),
-        "num_steps": int(sim.step),
-        "coverage": coverage,
-    }
-    if valid.size:
-        metrics.update(
-            {
-                "apd_mean_ms": float(np.mean(valid)),
-                "apd_median_ms": float(np.median(valid)),
-                "apd_min_ms": float(np.min(valid)),
-                "apd_max_ms": float(np.max(valid)),
-                "activation_spread_ms": float(
-                    np.max(sim.t_deactivation[~np.isnan(sim.t_deactivation)]) - np.min(sim.t_activation[~np.isnan(sim.t_activation)])
-                ),
-            }
-        )
-    else:
-        metrics.update(
-            {
-                "apd_mean_ms": float("nan"),
-                "apd_median_ms": float("nan"),
-                "apd_min_ms": float("nan"),
-                "apd_max_ms": float("nan"),
-                "activation_spread_ms": float("nan"),
-            }
-        )
-    return metrics
-
-
 def main() -> None:
     cfg = Config()
+    start = time.time()
     sim = run_simulation(cfg)
-    metrics = compute_metrics(sim)
-    print(f"Simulation finished in {metrics['num_steps']} steps, t_end = {metrics['t_end_ms']:.2f} ms")
+    end = time.time()
+    print(f"Total simulation time: {end - start:.4f} seconds")
+    metrics = compute_metrics(cfg, sim)
+    if cfg.show_apd_at_end and not cfg.animate:
+        show_activation_maps(cfg, sim)
+    # print(f"state activation {sim.activation_step}")
+    # print(f"state deactivation {sim.deactivation_step}")
+    print(f"Simulation finished in {metrics['num_steps']} steps")
     print(f"Coverage: {metrics['coverage']:.3f}")
-    print(f"APD mean: {metrics['apd_mean_ms']:.2f} ms")
+    print(f"APD steps: {metrics['apd_steps']:}")
+    # for step_index, count in enumerate(sim.activation_counts, start=1):
+    #     print(f"Step {step_index}: {count} cells transitioned 0->1")
+    iter = 1
+    print(f"cells transitioned 0->1 at step {iter}: {sim.activation_counts[iter-1]}")
 
 
 if __name__ == "__main__":
