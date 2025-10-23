@@ -1,157 +1,86 @@
-# Cardiac Electrophysiological Propagation (Cellular Automata)
+# Cellular Automata LAT Optimisation Workflow
 
-A Python implementation of a 2-D **cardiac excitation** model using a **hybrid cellular automaton** (CA): integer states for *rest/excited/refractory* plus a floating “voltage-like” accumulator driven by an **anisotropic Gaussian kernel**. The repo includes tools to compute **LAT** (Local Activation Time), **APD\_effective** (excited + refractory), basic visualization, and a **Nelder–Mead** optimizer for parameter fitting.
+This README documents the two standalone scripts that live alongside the legacy project:
 
----
+- `cardiac_ca_copy.py` – runs the 2-D cardiac cellular automaton (CA) and reports LAT/APD metrics.  
+- `optimize_kernel_threshold.py` – performs Nelder–Mead optimisation of the CA kernel weights and Gaussian threshold map so that the simulated LAT field matches a mono-domain reference.
 
-## Features
-
-* **Hybrid CA update rule** with anisotropic neighbor drive (convolutional kernel).
-* **Stimuli** presets (center, bottom\_center, bottom\_cap).
-* **Metrics**
-
-  * **LAT** map and coverage.
-  * **APD\_effective** tracker (time in excited + refractory).
-* **Visualization**
-
-  * Animation frames (optional snapshots).
-  * Heatmaps (LAT, APD histogram).
-* **Optimization**
-
-  * Fast 1-D Nelder–Mead demo fitting **refractory time** to a target APD.
-
+These scripts work together to fit the CA parameters to the reference data in `single_CL_LAT.dat`, then re-run the CA with the optimised settings.
 
 ---
 
-## Project structure
 
-```
-/src
-  /cardiac_ca
-    __init__.py
-    apd.py           # APDTracker: measures APD_effective (state 1 → back to 0)
-    app.py           # SimulationApp orchestrator (run loop, plots, summaries)
-    ca.py            # CardiacCA + update rule (convolution + state machine)
-    config.py        # SimulationConfig (parameters, kernel builder)
-    constants.py     # Defaults: DX, DT_MS, EXCITED_STAGES, etc.
-    data.py          # Simple per-frame activity stats
-    grid.py          # Stimulus / initial condition builders
-    kernel.py        # Anisotropic Gaussian kernel (+ factory)
-    lat.py           # LATTracker
-    viz.py           # Colormap, imshow helpers
-  run_sim.py         # Run a full CA simulation with plots
-  optimize_apd_nm.py # Fast Nelder–Mead (1-D): fits refractory time to APD
-  lat_map.png        # Generated LAT heatmap (example)
-  apd_hist.png       # Generated APD histogram (example)
-  simulation_step_*.png  # Optional snapshots
-```
+## Optimising LAT (``optimize_kernel_threshold.py``)
 
----
-
-## Installation
-
-> Python 3.9+ recommended.
+Run the optimiser from the repository root:
 
 ```bash
-# (optional) create a clean environment
-python -m venv .venv
-source .venv/bin/activate   # on Windows: .venv\Scripts\activate
+python optimize_kernel_threshold.py --verbose \
+    --initial-simplex-scale 0.1 \
+    --max-iter 300 \
+    --tol 1e-3 \
+    --save optimised_kernel_thresholds.npz
+```
 
-pip install -U numpy scipy matplotlib
+### Command-line options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--target PATH` | `single_CL_LAT.dat` | Mono-domain reference LAT grid (text file). Must reshape to the CA grid size. |
+| `--max-iter N` | `60` | Nelder–Mead iteration limit. Increase (e.g., 300–500) for higher dimensional kernels. |
+| `--tol VALUE` | `1e-3` | Termination tolerances applied to simplex size (`xatol`) and function value (`fatol`). |
+| `--verbose` | off | Print the objective value for every evaluation. Helpful to inspect convergence. |
+| `--save PATH` | `optimised_kernel_thresholds.npz` | Persist the best kernel/thresholds, the final objective, and success flag. |
+| `--initial-simplex-scale VALUE` | `None` | If provided, perturbs each parameter by `VALUE × max(|x0|, 1e-3)` when constructing the initial simplex. Use values in `[0.05, 0.2]` to explore more aggressively. |
+
+### What the optimiser does
+
+1. Builds an initial 15×15 anisotropic Gaussian kernel (centre weight forced to zero) and concatenates it with four Gaussian-threshold scalars: `threshold_min`, `threshold_max`, `threshold_sigma_y_frac`, `threshold_sigma_x_frac`.
+2. For each parameter vector proposed by Nelder–Mead it:
+   - Reshapes the vector back into a normalised kernel.
+   - Clamps threshold scalars inside configured bounds.
+   - Runs `cardiac_ca_copy.Config` with the custom kernel.
+   - Computes the summed squared relative error between simulated and reference LAT on all cells where both are valid. (Penalties for missing coverage can be configured via the constants near the top of the file.)
+3. On exit, prints the best parameters and saves them if `--save` is supplied.
+
+The saved `.npz` contains:
+
+```
+kernel                     # 2-D array (kernel_size x kernel_size)
+threshold_min              # float
+threshold_max              # float
+threshold_sigma_y_frac     # float
+threshold_sigma_x_frac     # float
+objective                  # final objective value
+success / message          # SciPy solver status
 ```
 
 ---
 
-## How the model works 
+## Running the CA with optimised parameters (``cardiac_ca_copy.py``)
 
-* Each cell has an **integer state**:
-
-  * `0` RESTING,
-  * `1..k_exc` EXCITED (k\_exc = `EXCITED_STAGES`),
-  * `k_exc+1 .. k_exc+REFRACTORY_STEPS` REFRACTORY, then back to `0`.
-* A **voltage-like accumulator** `V` integrates neighbor input:
-
-  * Neighbors are cells in **excited** states; their mask is convolved with an **anisotropic Gaussian kernel** (fiber angle & anisotropy).
-  * Resting cells update `V_next = α·V + (1−α)·I`; if `V_next ≥ θ`, they fire (`state=1`) and reset `V` locally.
-* **APD\_effective** is:
-
-  ```
-  APD_effective = (EXCITED_STAGES + REFRACTORY_STEPS) * DT_MS
-  ```
-
-  measured per-cell by `APDTracker` as *time from first entering state 1 to first return to 0*.
-
----
-
-## Run a simulation
+Run the simulation with either the default configuration or an exported `.npz`:
 
 ```bash
-python src/run_sim.py
+# Default configuration
+python cardiac_ca_copy.py
+
+# Use optimised kernel/thresholds
+python cardiac_ca_copy.py --params optimised_kernel_thresholds.npz
 ```
 
+### What happens during a run
 
-Artifacts:
+1. The script constructs a `Config` dataclass with grid size `401×401`, stimulus placement on the bottom cap, and CA timings.
+2. If `--params` is supplied, `_apply_saved_parameters` injects the stored kernel and threshold values, and updates `Config.kernel_size` to match the saved kernel.
+3. The CA runs until it returns to all-resting or hits `max_steps`.
+4. Summary metrics are printed:
+   - Wall-clock runtime.
+   - Simulation step count and coverage (fraction of cells that activated).
+   - Activation/deactivation step range and mean APD steps.
+5. If `Config.show_apd_at_end` is set, LAT/APD heat maps are rendered via `viz_metrics.py`.
 
-* `lat_map.png` – LAT heatmap (ms).
-* `apd_hist.png` – Histogram of APD\_effective (ms).
-* `simulation_step_*.png` – Optional snapshots at configured frames.
-
-**Where to change parameters**: `src/cardiac_ca/constants.py` and `src/cardiac_ca/config.py`.
-
-Key defaults :
-
-```python
-# constants.py
-DT_MS = 0.1                 # ms per step
-EXCITED_STAGES = 3          # number of excited substates
-REFRACTORY_STEPS = 200      # refractory length in steps
-ANISO_RATIO = 1.5           # sigma_long / sigma_trans
-SIGMA_TRANS = 4.0
-FIBER_ANGLE_DEG = 90.0
-KERNEL_GAIN = 3
-
-# config.py (simulation run settings)
-time_steps = 300            # total simulation steps
-grid_size = 401
-stimulus_type = "bottom_cap"
-```
-
-> **Tip**: Ensure `time_steps` is large enough for most cells to return to rest at least once, i.e. `time_steps ≥ (EXCITED_STAGES + REFRACTORY_STEPS) + max(LAT_steps)`.
-
----
-
-## APD & LAT definitions
-
-* **LAT** (Local Activation Time): first time a cell enters `state == 1`.
-
-  * Tracked by `LATTracker`: `lat_steps` → `ms` via `DT_MS`.
-* **APD\_effective**: first entry into `state == 1` → first return to `state == 0`.
-
-  * Tracked by `APDTracker` (per-cell episodes; you can inspect the distribution).
-
----
-
-## Fast Nelder–Mead demo (fit APD)
-
-The provided `src/optimize_apd_nm.py` is a **1-D** fast prototype that fits **refractory time (ms)** so the CA’s **mean APD** matches a target.
-
-Run:
-
-```bash
-python src/optimize_apd_nm.py
-```
-
-What it does:
-
-* Uses a tiny grid (`81×81`) and short runs for quick function evaluations.
-* Optimizes **T\_ref\_ms** (converted inside the simulator to integer steps).
-* Objective:
-
-  $$
-  J = \left(\frac{\overline{APD}_{CA} - APD_{target}}{APD_{target}}\right)^2
-  $$
-
-
+You can edit the defaults in the `Config` dataclass (kernel size, refractory steps, stimulus geometry) or override them inside your own script before calling `run_simulation`.
 
 ---
 
