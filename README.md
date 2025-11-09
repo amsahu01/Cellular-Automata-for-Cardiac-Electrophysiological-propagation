@@ -1,158 +1,77 @@
-# Cardiac Electrophysiological Propagation (Cellular Automata)
+# Cardiac Cellular Automata 
 
-A Python implementation of a 2-D **cardiac excitation** model using a **hybrid cellular automaton** (CA): integer states for *rest/excited/refractory* plus a floating “voltage-like” accumulator driven by an **anisotropic Gaussian kernel**. The repo includes tools to compute **LAT** (Local Activation Time), **APD\_effective** (excited + refractory), basic visualization, and a **Nelder–Mead** optimizer for parameter fitting.
+This repository hosts two main entry points for simulating and tuning a 2‑D cellular automaton (CA) model of cardiac electrophysiology:
 
----
+- `cardiac_ca.py` runs the forward simulation, visualises propagation, and reports basic activation metrics.
+- `LAT_optimization.py` fits the CA parameters to a reference local-activation-time (LAT) map using Nelder–Mead.
 
-## Features
-
-* **Hybrid CA update rule** with anisotropic neighbor drive (convolutional kernel).
-* **Stimuli** presets (center, bottom\_center, bottom\_cap).
-* **Metrics**
-
-  * **LAT** map and coverage.
-  * **APD\_effective** tracker (time in excited + refractory).
-* **Visualization**
-
-  * Animation frames (optional snapshots).
-  * Heatmaps (LAT, APD histogram).
-* **Optimization**
-
-  * Fast 1-D Nelder–Mead demo fitting **refractory time** to a target APD.
-
+Both scripts share the same `Config` dataclass, so changes you make to the CA settings flow naturally between standalone simulations and optimisation runs.
 
 ---
 
-## Project structure
+## Requirements
 
-```
-/src
-  /cardiac_ca
-    __init__.py
-    apd.py           # APDTracker: measures APD_effective (state 1 → back to 0)
-    app.py           # SimulationApp orchestrator (run loop, plots, summaries)
-    ca.py            # CardiacCA + update rule (convolution + state machine)
-    config.py        # SimulationConfig (parameters, kernel builder)
-    constants.py     # Defaults: DX, DT_MS, EXCITED_STAGES, etc.
-    data.py          # Simple per-frame activity stats
-    grid.py          # Stimulus / initial condition builders
-    kernel.py        # Anisotropic Gaussian kernel (+ factory)
-    lat.py           # LATTracker
-    viz.py           # Colormap, imshow helpers
-  run_sim.py         # Run a full CA simulation with plots
-  optimize_apd_nm.py # Fast Nelder–Mead (1-D): fits refractory time to APD
-  lat_map.png        # Generated LAT heatmap (example)
-  apd_hist.png       # Generated APD histogram (example)
-  simulation_step_*.png  # Optional snapshots
-```
+- Python 3.10+ (the project relies on dataclass features and newer typing syntax).
+- Python packages: `numpy`, `scipy`, `matplotlib` (for the helpers in `viz_metrics.py`). Use `pip install numpy scipy matplotlib`.
+- A reference LAT grid file (default: `single_CL_LAT.dat`) for stimulation masks and optimisation targets.
 
 ---
 
-## Installation
+## Running the Cellular Automaton (`cardiac_ca.py`)
 
-> Python 3.9+ recommended.
+1. **Review configuration**  
+   The `Config` dataclass near the top of the file controls every aspect of the simulation:
+   - **Grid & timing**: `height`, `width`, `dt_ms`, `max_steps`.
+   - **Action potential durations**: `excited_steps`, `refractory_steps`.
+   - **Kernel parameters**: `kernel_size`, `sigma_trans`, `aniso_ratio`, `angle_deg`, `gain`.
+   - **Uniform threshold**: `threshold`.
+   - **Stimulus**: `stimulus_type` (`"bottom_cap"` or `"lat_mask"`), `stimulus_size`, `stimulus_data_path`, `stimulus_value`.
+   - **Visualisation**: toggles for animation (`animate`, `steps_per_frame`, `fps`, `cmap_name`) and end-of-run APD plots.
 
-```bash
-# (optional) create a clean environment
-python -m venv .venv
-source .venv/bin/activate   # on Windows: .venv\Scripts\activate
+2. **Provide stimulus data (if needed)**  
+   The default `stimulus_type="lat_mask"` expects `single_CL_LAT.dat` in the repository root. Each value indicates whether the corresponding cell is part of the initial activation mask (`stimulus_value` determines the selected entries). Set `stimulus_type="bottom_cap"` to bypass the file requirement.
 
-pip install -U numpy scipy matplotlib
-```
+3. **Run the simulation**
+   ```bash
+   python cardiac_ca.py
+   ```
+   The script initialises the state, repeatedly calls `simulate_step`, and optionally animates the wavefront using helpers in `viz_metrics.py`. At the end it prints:
+   - Wall-clock runtime.
+   - Activation-step range (`SimState.activation_step.min/max`).
+   - Summary metrics from `viz_metrics.compute_metrics` (steps taken, coverage, APD).
 
----
-
-## How the model works 
-
-* Each cell has an **integer state**:
-
-  * `0` RESTING,
-  * `1..k_exc` EXCITED (k\_exc = `EXCITED_STAGES`),
-  * `k_exc+1 .. k_exc+REFRACTORY_STEPS` REFRACTORY, then back to `0`.
-* A **voltage-like accumulator** `V` integrates neighbor input:
-
-  * Neighbors are cells in **excited** states; their mask is convolved with an **anisotropic Gaussian kernel** (fiber angle & anisotropy).
-  * Resting cells update `V_next = α·V + (1−α)·I`; if `V_next ≥ θ`, they fire (`state=1`) and reset `V` locally.
-* **APD\_effective** is:
-
-  ```
-  APD_effective = (EXCITED_STAGES + REFRACTORY_STEPS) * DT_MS
-  ```
-
-  measured per-cell by `APDTracker` as *time from first entering state 1 to first return to 0*.
+4. **Interpret the output**  
+   - `SimState` captures the evolving grid state, activation/deactivation step maps, and the per-cell threshold matrix.  
+   - `animate_simulation` and `show_activation_maps` help validate propagation visually (useful when tweaking kernel anisotropy or thresholds).
 
 ---
 
-## Run a simulation
+## Optimising LAT Fit (`LAT_optimization.py`)
 
-```bash
-python src/run_sim.py
-```
+`LAT_optimization.py` calibrates three CA parameters—`sigma_trans`, `aniso_ratio`, and `threshold`—to minimise the squared relative error between the simulated LAT surface and a monodomain reference.
 
+1. **Key constants (top of the file)**
+   - `LAT_PATH`: path to the monodomain LAT file (default `single_CL_LAT.dat`).
+   - `MAX_STEPS`, `DT_OVERRIDE`: override simulation-length/temporal resolution if desired.
+   - `INITIAL_SIMPLEX`: four vertices (3 parameters + 1) defining the starting simplex in physical units; all values must stay positive.
+   - Objective/solver controls: tolerances, max evaluations, denominators (`EPS_MS`), penalties for never-activated cells (`PENALTY_LAT_MS`), and verbosity switches (`PRINT_*` flags).
 
-Artifacts:
+2. **Workflow overview**
+   - `load_monodomain_lat` reshapes and validates the reference LAT grid.
+   - `ensure_positive_simplex`, `to_raw`, and `to_physical` enforce >0 constraints by mapping parameters into log space for SciPy's unconstrained `minimize`.
+   - `build_objective` runs `run_simulation` with each candidate parameter set, converts activation steps to ms via `activation_lat_in_ms`, and accumulates an evaluation log for diagnostics.
+   - `scipy.optimize.minimize(..., method="Nelder-Mead")` iterates until tolerances or `MAX_EVALS` are hit, optionally printing every evaluation and/or best vertex per iteration.
 
-* `lat_map.png` – LAT heatmap (ms).
-* `apd_hist.png` – Histogram of APD\_effective (ms).
-* `simulation_step_*.png` – Optional snapshots at configured frames.
+3. **Run optimisation**
+   ```bash
+   python LAT_optimization.py
+   ```
+   Expect console output describing:
+   - Reference and CA grid statistics (min/max LAT in ms).
+   - Every objective evaluation (parameter triple and squared relative error) if `PRINT_EACH_EVAL` is `True`.
+   - Final success status, best-fit parameters, and achieved objective value.
 
-**Where to change parameters**: `src/cardiac_ca/constants.py` and `src/cardiac_ca/config.py`.
-
-Key defaults :
-
-```python
-# constants.py
-DT_MS = 0.1                 # ms per step
-EXCITED_STAGES = 3          # number of excited substates
-REFRACTORY_STEPS = 200      # refractory length in steps
-ANISO_RATIO = 1.5           # sigma_long / sigma_trans
-SIGMA_TRANS = 4.0
-FIBER_ANGLE_DEG = 90.0
-KERNEL_GAIN = 3
-
-# config.py (simulation run settings)
-time_steps = 300            # total simulation steps
-grid_size = 401
-stimulus_type = "bottom_cap"
-```
-
-> **Tip**: Ensure `time_steps` is large enough for most cells to return to rest at least once, i.e. `time_steps ≥ (EXCITED_STAGES + REFRACTORY_STEPS) + max(LAT_steps)`.
+4. **Using the fitted parameters**  
+   Copy the reported `sigma_trans`, `aniso_ratio`, and `threshold` back into `cardiac_ca.Config` (or another config instance) to rerun the CA with the optimised settings. Because both scripts import the same `Config`, you can also modify `LAT_optimization.py` to seed the optimiser with custom defaults (e.g., a different grid size or stimulus) before running `minimize`.
 
 ---
-
-## APD & LAT definitions
-
-* **LAT** (Local Activation Time): first time a cell enters `state == 1`.
-
-  * Tracked by `LATTracker`: `lat_steps` → `ms` via `DT_MS`.
-* **APD\_effective**: first entry into `state == 1` → first return to `state == 0`.
-
-  * Tracked by `APDTracker` (per-cell episodes; you can inspect the distribution).
-
----
-
-## Fast Nelder–Mead demo (fit APD)
-
-The provided `src/optimize_apd_nm.py` is a **1-D** fast prototype that fits **refractory time (ms)** so the CA’s **mean APD** matches a target.
-
-Run:
-
-```bash
-python src/optimize_apd_nm.py
-```
-
-What it does:
-
-* Uses a tiny grid (`81×81`) and short runs for quick function evaluations.
-* Optimizes **T\_ref\_ms** (converted inside the simulator to integer steps).
-* Objective:
-
-  $$
-  J = \left(\frac{\overline{APD}_{CA} - APD_{target}}{APD_{target}}\right)^2
-  $$
-
-
-
----
-
-
