@@ -1,4 +1,4 @@
-# Cardiac Cellular Automata 
+# Cardiac Cellular Automaton
 
 This repository hosts two main entry points for simulating and tuning a 2‑D cellular automaton (CA) model of cardiac electrophysiology:
 
