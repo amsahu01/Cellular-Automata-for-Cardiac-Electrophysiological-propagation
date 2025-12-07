@@ -26,7 +26,7 @@ class Config:
 
     # Phase durations (number of simulation steps)
     excited_steps: int = 3
-    refractory_steps: int = 200
+    refractory_steps: int = 269
 
     # Kernel parameters
     kernel_size: int = 15
